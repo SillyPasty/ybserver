@@ -22,7 +22,7 @@ private:
 private:
     int m_thread_number;                  // max thread number
     int m_max_requests;                   // max requests
-    std::unique_ptr<pthread_t> m_threads; // threads
+    pthread_t* m_threads; // threads
     std::list<std::shared_ptr<T>> m_workqueue;
     locker m_queuelocker;
     sem m_queuestat; // have tasks?
@@ -36,7 +36,7 @@ threadpool<T>::threadpool(int thread_number, int max_requests) : m_thread_number
     {
         throw std::exception();
     }
-    m_threads = std::make_unique<pthread_t>(thread_number);
+    m_threads = new pthread_t[m_thread_number];
     if (!m_threads)
     {
         throw std::exception();
@@ -60,6 +60,7 @@ threadpool<T>::threadpool(int thread_number, int max_requests) : m_thread_number
 template <typename T>
 threadpool<T>::~threadpool()
 {
+    delete [] m_threads;
     m_stop = true;
 }
 
