@@ -35,6 +35,7 @@ public:
     void push(std::shared_ptr<T>, time_t);
     std::shared_ptr<HeapTimer<T>> front();
     void remove(HeapTimer<T>);
+    bool empty();
     int size();
 
 private:

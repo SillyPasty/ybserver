@@ -174,6 +174,10 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char *text)
     { // GET方法
         m_method = GET;
     }
+    else if (strcasecmp(method, "POST") == 0)
+    {
+        m_method = POST;
+    }
     else
     {
         return BAD_REQUEST;
