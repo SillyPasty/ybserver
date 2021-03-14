@@ -13,7 +13,8 @@ int main()
     cpp->init(url, user, password, db_name, port, 8, 1);
     MYSQL *conn = cpp->get_connection();
     char *query_q = "SELECT * FROM test_table";
-    mysql_query(conn, query_q);
+    char *query_ins_q = "INSERT INTO test_table(id, value) VALUES (2, 'value1')";
+    mysql_query(conn, query_ins_q);
     MYSQL_RES *res;
     if (!(res = mysql_store_result(conn))) //获得sql语句结束后返回的结果集
     {

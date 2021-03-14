@@ -214,11 +214,13 @@ http_conn::HTTP_CODE http_conn::parse_headers(char *text)
 {
     if (text[0] == '\0')
     {
+        // 若content有内容，需要转到content state
         if (m_content_length != 0)
         {
             m_check_state = CHECK_STATE_CONTENT;
             return NO_REQUEST;
         }
+        // 否则直接处理
         return GET_REQUEST;
     }
     else if (strncasecmp(text, "Connection:", 11) == 0)
@@ -253,6 +255,7 @@ http_conn::HTTP_CODE http_conn::parse_content(char *text)
 {
     if (m_read_idx >= (m_content_length + m_checked_idx))
     {
+        sscanf(text, "username:%s password:%s", username, password);
         text[m_content_length] = '\0';
         return GET_REQUEST;
     }
@@ -288,8 +291,11 @@ http_conn::HTTP_CODE http_conn::process_read()
             {
                 return BAD_REQUEST;
             }
-
-            if (ret == GET_REQUEST)
+            if (ret == GET_REQUEST && m_method == POST)
+            {
+                return BAD_REQUEST;
+            }
+            if (ret == GET_REQUEST && m_method == GET)
             {
                 return do_request();
             }
@@ -298,9 +304,12 @@ http_conn::HTTP_CODE http_conn::process_read()
         case CHECK_STATE_CONTENT:
         {
             ret = parse_content(text);
-            if (ret == GET_REQUEST)
+            if (ret == GET_REQUEST && m_method == GET)
             {
                 return do_request();
+            }
+            if (ret == GET_REQUEST && m_method == POST) {
+                // return do_post_request();
             }
             line_status = LINE_OPEN;
             break;
@@ -316,6 +325,7 @@ http_conn::HTTP_CODE http_conn::process_read()
 
 http_conn::HTTP_CODE http_conn::do_request()
 {
+    // get 目标文件, 用mmap函数将文件映射到内存中
     strcpy(m_real_file, doc_root);
     int len = strlen(doc_root);
     strncpy(m_real_file + len, m_url, FILENAME_LEN - len - 1);
@@ -338,6 +348,53 @@ http_conn::HTTP_CODE http_conn::do_request()
     m_file_address = (char *)mmap(0, m_file_stat.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
     close(fd);
     return FILE_REQUEST;
+}
+
+http_conn::HTTP_CODE http_conn::do_post_request()
+{
+    // 注册 or 查询
+    auto conn_pool = connection_pool::GetInstance();
+    auto conn = conn_pool->get_connection();
+
+    if (strcmp(m_url, "register") == 0) {
+        char query_q[100];
+        sprintf(query_q, "SELECT username FROM users WHERE username = '%s'", username);
+        int af_rows = mysql_affected_rows(conn);
+        if (!af_rows) {
+            m_post = REG_FAILED;
+            return FILE_REQUEST;
+        }
+        sprintf(query_q, "INSERT INTO users VALUES ('%s', '%s') ", username, password);
+        m_post = REG_SUCCESS;
+        mysql_query(conn, query_q);
+        conn_pool->release_connection(conn);
+        conn = nullptr;
+        return FILE_REQUEST;
+    }
+
+    if (strcmp(m_url, "login") == 0) {
+        char query_q[100];
+        sprintf(query_q, "SELECT password FROM users WHERE username = '%s'", username);
+        MYSQL_RES *res;
+        if (!(res = mysql_store_result(conn))) //获得sql语句结束后返回的结果集
+        {
+            printf("Couldn't get result from %s\n", mysql_error(conn));
+            return INTERNAL_ERROR;
+        }
+        int af_rows = mysql_affected_rows(conn);
+        MYSQL_ROW column;
+        m_post = LOGIN_FAILED;
+        while (column = mysql_fetch_row(res)) //在已知字段数量情况下，获取并打印下一行
+        {
+            if(strcmp(column[0], password) == 0) {
+                m_post = LOGIN_SUCCESS;
+            }
+        }
+        conn_pool->release_connection(conn);
+        conn = nullptr;
+        return FILE_REQUEST;
+    }
+    return BAD_REQUEST;
 }
 
 void http_conn::unmap()
@@ -398,6 +455,7 @@ bool http_conn::write()
 
 bool http_conn::add_response(const char *format, ...)
 {
+    // 根据format向write_buf中写入
     if (m_write_idx >= WRITE_BUFFER_SIZE)
     {
         return false;
@@ -492,26 +550,48 @@ bool http_conn::process_write(HTTP_CODE ret)
     }
     case FILE_REQUEST:
     {
-        add_status_line(200, ok_200_title);
-        if (m_file_stat.st_size != 0)
-        {
-            add_headers(m_file_stat.st_size);
-            m_iv[0].iov_base = m_write_buf;
-            m_iv[0].iov_len = m_write_idx;
-            m_iv[1].iov_base = m_file_address;
-            m_iv[1].iov_len = m_file_stat.st_size;
-            m_iv_count = 2;
-            return true;
-        }
-        else
-        {
-            const char *ok_string = "<html><body><body/><html/>";
-            add_headers(strlen(ok_string));
-            if (!add_content(ok_string))
+        if (m_method == GET) {
+                add_status_line(200, ok_200_title);
+            if (m_file_stat.st_size != 0)
+            {
+                add_headers(m_file_stat.st_size);
+                m_iv[0].iov_base = m_write_buf;
+                m_iv[0].iov_len = m_write_idx;
+                m_iv[1].iov_base = m_file_address;
+                m_iv[1].iov_len = m_file_stat.st_size;
+                m_iv_count = 2;
+                return true;
+            }
+            else
+            {
+                const char *ok_string = "<html><body><body/><html/>";
+                add_headers(strlen(ok_string));
+                if (!add_content(ok_string))
+                {
+                    return false;
+                }
+            }
+        } else if (m_method == POST) {
+            std::string ok_string;
+            switch (m_post)
+            {
+            case LOGIN_SUCCESS:
+            case REG_SUCCESS:
+                ok_string = "success";
+                break;
+            case LOGIN_FAILED:
+            case REG_FAILED:
+            default:
+                ok_string = "failed";
+                break;
+            }
+            add_headers(strlen(ok_string.c_str()));
+            if (!add_content(ok_string.c_str()))
             {
                 return false;
             }
         }
+        
     }
     default:
     {

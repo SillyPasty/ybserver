@@ -75,7 +75,6 @@ public:
     {
         if (pthread_cond_init(&m_cond, NULL) != 0)
         {
-            //pthread_mutex_destroy(&m_mutex);
             throw std::exception();
         }
     }
@@ -88,9 +87,7 @@ public:
     bool wait(pthread_mutex_t *m_mutex)
     {
         int ret = 0;
-        //pthread_mutex_lock(&m_mutex);
         ret = pthread_cond_wait(&m_cond, m_mutex);
-        //pthread_mutex_unlock(&m_mutex);
         return ret == 0;
     }
 
@@ -112,7 +109,6 @@ public:
     }
 
 private:
-    // pthread_mutex_t m_mutex;
     pthread_cond_t m_cond;
 };
 #endif

@@ -19,7 +19,10 @@
 #include <sys/mman.h>
 #include <stdarg.h>
 #include <errno.h>
-#include "locker.h"
+#include <cstring>
+#include <string>
+#include "../locker/locker.h"
+#include "../dao/connection_pool.h"
 
 class http_conn {
 public:
@@ -30,6 +33,7 @@ public:
     enum CHECK_STATE {CHECK_STATE_REQUESTLINE = 0, CHECK_STATE_HEADER, CHECK_STATE_CONTENT};
     enum HTTP_CODE {NO_REQUEST, GET_REQUEST, BAD_REQUEST, NO_RESOURCE, FORBIDDEN_REQUEST, FILE_REQUEST, INTERNAL_ERROR, CLOSED_CONNECTION};
     enum LINE_STATUS {LINE_OK = 0, LINE_BAD, LINE_OPEN};
+    enum POST_STATUS {LOGIN_SUCCESS, LOGIN_FAILED, REG_SUCCESS, REG_FAILED};
 public:
     void init(int sockfd, const sockaddr_in& addr);
     void close_conn(bool real_close = true);
@@ -45,6 +49,7 @@ private:
     HTTP_CODE parse_headers(char* text);
     HTTP_CODE parse_content(char* text);
     HTTP_CODE do_request();
+    HTTP_CODE do_post_request();
     char* get_line() {return m_read_buf + m_start_line;}
     LINE_STATUS parse_line();
 
@@ -72,6 +77,7 @@ private:
 
     CHECK_STATE m_check_state;
     METHOD m_method;
+    POST_STATUS m_post;
 
     char m_real_file[FILENAME_LEN];
 
@@ -86,5 +92,8 @@ private:
     struct stat m_file_stat;
     struct iovec m_iv[2];
     int m_iv_count;
+
+    char* username;
+    char* password;
 };
 #endif
