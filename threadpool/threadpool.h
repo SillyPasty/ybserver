@@ -1,19 +1,19 @@
-#ifndef threadpool_HPP
-#define threadpool_HPP
+#ifndef threadpool_H
+#define threadpool_H
 
 #include <list>
 #include <cstdio>
 #include <exception>
 #include <pthread.h>
 #include <memory>
-#include "locker.h"
+#include "../locker/locker.h"
 template <typename T>
 class threadpool
 {
 public:
     threadpool(int thread_number = 8, int max_requests = 10000);
     ~threadpool();
-    bool append(std::shared_ptr<T> request);
+    bool append(T *request);
 
 private:
     static void *worker(void *arg); // pass to p_thread
@@ -23,7 +23,7 @@ private:
     int m_thread_number;                  // max thread number
     int m_max_requests;                   // max requests
     pthread_t* m_threads; // threads
-    std::list<std::shared_ptr<T>> m_workqueue;
+    std::list<T*> m_workqueue;
     locker m_queuelocker;
     sem m_queuestat; // have tasks?
     bool m_stop;     // terminate
@@ -65,7 +65,7 @@ threadpool<T>::~threadpool()
 }
 
 template <typename T>
-bool threadpool<T>::append(std::shared_ptr<T> request)
+bool threadpool<T>::append(T *request)
 {
     m_queuelocker.lock();
     if (m_workqueue.size() > m_max_requests)
@@ -82,7 +82,7 @@ bool threadpool<T>::append(std::shared_ptr<T> request)
 template <typename T>
 void *threadpool<T>::worker(void *arg)
 {
-    threadpool pool = (threadpool *)arg;
+    threadpool *pool = (threadpool *)arg;
     pool->run();
     return pool;
 }
@@ -99,7 +99,7 @@ void threadpool<T>::run()
             m_queuelocker.unlock();
             continue;
         }
-        std::shared_ptr<T> request = m_workqueue.front();
+        T* request = m_workqueue.front();
         m_workqueue.pop_front();
         m_queuelocker.unlock();
         if (!request)

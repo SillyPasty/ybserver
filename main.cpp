@@ -10,9 +10,10 @@
 #include <cassert>
 #include <sys/epoll.h>
 
-#include "locker.h"
-#include "threadpool.h"
-#include "http_conn.h"
+// #include "locker/locker.h"
+#include "threadpool/threadpool.h"
+#include "http/http_conn.h"
+#include "dao/connection_pool.h"
 
 #define MAX_FD 65536
 #define MAX_EVENT_NUMBER 10000
@@ -45,6 +46,14 @@ int main(int argc, char* argv[]) {
     int port = atoi(argv[2]);
 
     addsig(SIGPIPE, SIG_IGN);
+
+    connection_pool *cpp = connection_pool::GetInstance();
+    std::string url = "cdb-iien6iby.cd.tencentcdb.com";
+    int db_port = 10115;
+    std::string user = "root";
+    std::string password = "semester07";
+    std::string db_name = "test";
+    cpp->init(url, user, password, db_name, db_port, 8, 1);
 
     threadpool<http_conn>* pool = nullptr;
     try {
